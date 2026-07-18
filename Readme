@@ -1,0 +1,122 @@
+# CHR-MVC: Consensus Hybrid Graph Spectral Embedding for Multi-View Clustering
+
+Official implementation of **CHR-MVC** (Consensus Hybrid-graph with Random-walk spectral embedding for Multi-View Clustering), a spectral embedding consensus graph framework that replaces additive affinity fusion with cross-view agreement counting, reconciles graph purity and coverage through a hybrid core–bridge construction, and refines boundary labels via a provably convergent Neighbourhood Consensus Refinement (NCR).
+
+## Repository Structure
+
+```
+CHR-MVC/
+├── bringdatset.py      # Downloads the multi-view benchmark datasets
+├── code2562026.py      # Main implementation of CHR-MVC (graph construction, RW-spectral embedding, NCR)
+└── README.md
+```
+
+## Requirements
+
+The implementation is pure Python and runs entirely on CPU (no GPU required). Tested with Python 3.10.
+
+```bash
+pip install numpy scipy scikit-learn gdown
+```
+
+| Package        | Purpose                                      |
+| -------------- | -------------------------------------------- |
+| `numpy`        | Numerical operations                         |
+| `scipy`        | Sparse matrices, eigensolver, Hungarian algorithm |
+| `scikit-learn` | K-NN graphs, K-Means, preprocessing, metrics |
+| `gdown`        | Downloading datasets from Google Drive       |
+
+## Step 1: Download the Datasets
+
+Run the dataset script to fetch all benchmark multi-view datasets (`.mat` files) from Google Drive into the `mvdata/` folder:
+
+```bash
+python bringdatset.py
+```
+
+If you are working in **Google Colab**, simply run the following in a cell:
+
+```python
+!pip install gdown -q
+!gdown --folder "https://drive.google.com/drive/folders/1wkQA0z-cAKVzFIk1izOALCXdqdwsPvx2" -O /content/mvdata
+!ls -la /content/mvdata/
+```
+
+Each `.mat` file contains a cell array `X` of view feature matrices (one matrix of size *N × d_v* per view) and a ground-truth label vector `y` (used for evaluation only).
+
+## Step 2: Run CHR-MVC
+
+Run the main script, pointing `--data` to the desired dataset:
+
+```bash
+python code2562026.py --data /content/mvdata/Caltech101-all.mat
+```
+
+If no argument is given, the script defaults to the path defined in the `DATA` variable at the top of the file.
+
+### What the script does
+
+1. **Preprocessing** — each view is standardised column-wise and ℓ2-normalised row-wise.
+2. **Cross-view agreement graph** — for every sample pair, the number of views in which they are mutual K-nearest neighbours is counted (Eq. 4 in the paper) and symmetrised.
+3. **Hybrid core–bridge graph** — a heavily weighted high-agreement core (`agreement ≥ CORE_T`, weight `CORE_W`) is superposed on a connectivity-restoring bridge (`agreement ≥ BRIDGE_T`), per Eq. 12.
+4. **Random-walk spectral embedding** — the top-*C* eigenvectors of the symmetrised transition matrix `P̃ = ½(P + Pᵀ)`, `P = D⁻¹W`, are computed and row-normalised, then clustered to obtain initial labels.
+5. **Neighbourhood Consensus Refinement (NCR)** — labels are iteratively refined by self-anchored majority voting on the strict multi-view consensus adjacency (Eq. 17) until fewer than 0.2% of labels change.
+6. **Evaluation** — the script performs a K sweep (K ∈ {8, 10, 12}), selects the best K, reports mean (std) over 10 random seeds, and finally reports a multi-seed co-association consensus result.
+
+### Hyperparameters
+
+All hyperparameters are defined at the top of `code2562026.py`:
+
+| Variable   | Meaning                                  | Default |
+| ---------- | ---------------------------------------- | ------- |
+| `CORE_T`   | Core agreement threshold (τ_c)           | 3       |
+| `BRIDGE_T` | Bridge agreement threshold (τ_b)         | 2       |
+| `CORE_W`   | Core weighting factor (w_c)              | 2.0     |
+| `KNBR`     | Neighbours for the NCR consensus graph (K′) | 15   |
+| `MINV`     | Minimum agreeing views for NCR adjacency (μ) | 2   |
+| `NCR_IT`   | Maximum NCR iterations (T)               | 10      |
+| `SELF_W`   | Self-preference weight (s)               | 2       |
+| `SEEDS`    | Random seeds for stability analysis      | 0–9     |
+
+### Reported metrics
+
+Six standard external clustering metrics are reported: **ACC** (accuracy via Hungarian matching), **NMI**, **ARI**, **Purity**, **F-score**, and **Precision**. Results are given as mean (standard deviation) over the random seeds.
+
+## Example Output (Caltech101)
+
+```
+N=9144 C=101   CHR-MVC = hybrid consensus graph + rw-spectral + NCR
+
+K sweep (rw-spectral + NCR, seed 0):
+  K= 8: ACC=...  NMI=...  ARI=...
+  K=10: ACC=...  NMI=...  ARI=...
+  K=12: ACC=...  NMI=...  ARI=...
+
+-> best K=10; multi-seed stability (10 seeds):
+
+  per-seed mean (std):
+    ACC       = 0.3245 (0.004)
+    NMI       = 0.5136 (0.002)
+    ...
+```
+
+## Complexity
+
+Approximate K-NN search costs O(V·N·log N); the consensus and hybrid graphs are sparse with O(V·N·K) non-zeros; the top-C Lanczos eigensolve costs O(C·V·N·K); and NCR costs O(T·nnz(A)). The total cost is therefore linear in the sample size N (up to the log N factor), so CHR-MVC scales to large datasets on a standard CPU.
+
+## Citation
+
+If you find this work useful, please cite:
+
+```bibtex
+@article{chrmvc2026,
+  title   = {Consensus Hybrid Graph Spectral Embedding for Multi-View Clustering
+             Beyond the Precision Ceiling of Additive Fusion},
+  author  = {Abdulhamed, Ahmed A. and Singh, Prabhat Ranjan and Xiong, Shengwu},
+  year    = {2026}
+}
+```
+
+## License
+
+This code is released for academic research purposes.
